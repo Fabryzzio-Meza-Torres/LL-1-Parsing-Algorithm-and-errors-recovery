@@ -1,57 +1,180 @@
 #include <iostream>
-#include <string>
-#include <vector>
-#include <unordered_map>
 #include <stack>
-#include <iomanip>
-#include <algorithm>
+#include <unordered_map>
+#include <vector>
+#include <string>
+
 using namespace std;
 
-//Our arrays with terminals and non-terminals
-const std::string terminal[]= {"id",";","=","print","(",")","+","-","*","Num"," $"};
-const std::string non_terminals[]= {"P","SL","SL'","S","E","E'","T","T'","F"};
-
-//LL1 Parsing Table for the given grammar
-std::unordered_map<std::string, std::unordered_map<std::string, std::vector<std::string>>> LL1_Parsing_Table {
-    {"P", {{"id", {"SL"}}, {"print", {"SL"}}}},
-    {"SL", {{"id", {"S", "SL'"}}, {"print", {"S", "SL'"}}}},
-    {"SL'", {{";",{"S", "SL'"}},{"$",{""}}}},
-    {"S",{{"id",{"id","=","E"}},{"print",{"print","E"}}}},
-    {"E",{{"id",{"T","E'"}},{"Num",{"T","E'"}},{"(",{"T","E'"}}}},
-    {"E'",{{";",{""}},{")",{""}},{"+",{"+","T","E'"}},{"-",{"-","T","E'"}},{"$",{""}}}},
-    {"T",{{"id",{"F","T'"}},{"Num",{"F","T'"}},{"(",{"F","T'"}}}},
-    {"T'",{{"*",{"*","F","T'"}},{";",{""}},{")",{""}},{"+",{""}},{"-",{""}},{"$",{""}},{"*",{""}}}},
-    {"F",{{"id",{"id"}},{"Num",{"Num"}},{"(",{"(","E",")"}}}}
+// Definición de tokens y scanner
+class Token {
+public:
+    Token()=default;
+    enum Type { ID, SEMICOLON, ASSIGN, PRINT, LPAREN, RPAREN, PLUS, MINUS, MULT, NUM, END, ERR };
+    static const char* token_names[12];
+    Type type;
+    string lexema;
+    Token(Type type):type(type) { }
+    Token(Type type, const string& lex):type(type), lexema(lex) { }
 };
 
-//Function to check if the given string is a terminal
-bool isterminal(const std::string& symbol){
-    return symbol=="id"||symbol==";"||symbol=="="||symbol=="print"||symbol=="("||symbol==")"||symbol=="+"||symbol=="-"||symbol=="*"||symbol=="Num"||symbol=="$";
+const char* Token::token_names[12] = {"id", ";", "=", "print", "(", ")", "+", "-", "*", "Num", "$", "ERR"};
+
+ostream& operator << (ostream& os, const Token& tok) {
+    return os << Token::token_names[tok.type] << " (" << tok.lexema << ")";
 }
 
-//function for print the stack,input and action
-void imprimirTabla(const std::stack<std::string>& pila, const std::vector<std::string>& entrada, int indiceEntrada, const std::string& accion) {
-    // Imprimir la pila
-    std::stack<std::string> pilaCopia = pila;
-    std::vector<std::string> pilaElementos;
-    while (!pilaCopia.empty()) {
-        pilaElementos.push_back(pilaCopia.top());
-        pilaCopia.pop();
-    }
-    reverse(pilaElementos.begin(), pilaElementos.end());
-    for (const auto& elem : pilaElementos) {
-        cout << elem;
-    }
-    cout << setw(15 - pilaElementos.size());  // Ajuste de formato
+// Simulando un escáner que tokeniza la entrada
+class Scanner {
+public:
+    Scanner(const string& in) : input(in), pos(0) {}
+    Token nextToken() {
+        while (pos < input.size() && isspace(input[pos])) pos++;
+        if (pos >= input.size()) return Token(Token::END);
 
-    // Imprimir la entrada
-    for (int i = indiceEntrada; i < entrada.size(); i++) {
-        cout << entrada[i];
-    }
-    cout << setw(15 - (entrada.size() - indiceEntrada));  // Ajuste de formato
+        char current = input[pos];
+        if (isalpha(current)) {
+            string id;
+            while (pos < input.size() && (isalnum(input[pos]) || input[pos] == '_')) id += input[pos++];
+            if (id == "print") return Token(Token::PRINT, id);
+            return Token(Token::ID, id);
+        }
+        if (isdigit(current)) {
+            string num;
+            while (pos < input.size() && isdigit(input[pos])) num += input[pos++];
+            return Token(Token::NUM, num);
+        }
 
-    // Imprimir la acción
-    cout << accion << endl;
+        switch (current) {
+            case ';': pos++; return Token(Token::SEMICOLON, ";");
+            case '=': pos++; return Token(Token::ASSIGN, "=");
+            case '(': pos++; return Token(Token::LPAREN, "(");
+            case ')': pos++; return Token(Token::RPAREN, ")");
+            case '+': pos++; return Token(Token::PLUS, "+");
+            case '-': pos++; return Token(Token::MINUS, "-");
+            case '*': pos++; return Token(Token::MULT, "*");
+            default: return Token(Token::ERR, string(1, current));
+        }
+    }
+private:
+    string input;
+    size_t pos;
+};
+
+// Parser LL1 con tabla predictiva
+class ParserLL1 {
+public:
+    ParserLL1(const vector<Token>& tokens) : entrada(tokens), index(0) {
+        inicializarTablaLL1();
+        pila.push("$");
+        pila.push("P");
+    }
+
+    void inicializarTablaLL1() {
+        // LL1 Parsing Table
+        LL1_Parsing_Table = {
+            {"P", {{"id", {"SL"}}, {"print", {"SL"}}}},
+            {"SL", {{"id", {"S", "SL'"}}, {"print", {"S", "SL'"}}}},
+            {"SL'", {{";", {"S", "SL'"}}, {"$", {""}}}},
+            {"S", {{"id", {"id", "=", "E"}}, {"print", {"print", "E"}}}},
+            {"E", {{"id", {"T", "E'"}}, {"Num", {"T", "E'"}}, {"(", {"T", "E'"}}}},
+            {"E'", {{";", {""}}, {")", {""}}, {"+", {"+", "T", "E'"}}, {"-", {"-", "T", "E'"}}, {"$", {""}}}},
+            {"T", {{"id", {"F", "T'"}}, {"Num", {"F", "T'"}}, {"(", {"F", "T'"}}}},
+            {"T'", {{"*", {"*", "F", "T'"}}, {";", {""}}, {")", {""}}, {"+", {""}}, {"-", {""}}, {"$", {""}}}},
+            {"F", {{"id", {"id"}}, {"Num", {"Num"}}, {"(", {"(", "E", ")"}}}}
+        };
+    }
+
+    void parsear() {
+        cout << "Pila \t\t Entrada \t\t Acción" << endl;
+        imprimirEstado(); // Imprimir el estado inicial
+
+        while (!pila.empty()) {
+            string top = pila.top();
+            pila.pop();
+
+            Token tokenActual = entrada[index];
+
+            if (esTerminal(top)) {
+                if (top == tokenActual.lexema || top == Token::token_names[tokenActual.type]) {
+                    cout << "Match: " << top << endl;
+                    index++;
+                } else {
+                    cout << "Error de sintaxis: se esperaba " << top << endl;
+                    return;
+                }
+            } else {
+                string entradaActual = Token::token_names[tokenActual.type];
+                if (LL1_Parsing_Table[top][entradaActual].size() > 0) {
+                    vector<string> produccion = LL1_Parsing_Table[top][entradaActual];
+                    cout << top << " -> ";
+                    for (auto &p : produccion) cout << p << " ";
+                    cout << endl;
+
+                    // Apilar producción en orden inverso
+                    for (auto it = produccion.rbegin(); it != produccion.rend(); ++it) {
+                        if (*it != "") pila.push(*it);
+                    }
+                } else {
+                    cout << "Error de sintaxis: no se encontró entrada para " << entradaActual << endl;
+                    return;
+                }
+            }
+
+            imprimirEstado(); // Imprimir el estado después de cada acción
+        }
+    }
+
+private:
+    stack<string> pila;
+    vector<Token> entrada;
+    int index;
+
+    unordered_map<string, unordered_map<string, vector<string>>> LL1_Parsing_Table;
+
+    bool esTerminal(const string& simbolo) {
+        for (const char* terminal : Token::token_names)
+            if (simbolo == terminal) return true;
+        return false;
+    }
+
+    void imprimirEstado() {
+        // Imprimir el contenido de la pila
+        stack<string> pilaTmp = pila;
+        string pilaStr;
+        while (!pilaTmp.empty()) {
+            pilaStr = pilaTmp.top() + " " + pilaStr;
+            pilaTmp.pop();
+        }
+
+        // Imprimir la entrada restante
+        string entradaStr;
+        for (size_t i = index; i < entrada.size(); ++i) {
+            entradaStr += entrada[i].lexema + " ";
+        }
+
+        // Imprimir estado actual
+        cout << pilaStr << "\t\t" << entradaStr << "\t\tAcción realizada" << endl;
+    }
+};
+
+int main() {
+    string input = "x = 4 + 3; print(x + 1);";
+    Scanner scanner(input);
+    vector<Token> tokens;
+    Token token;
+    while ((token = scanner.nextToken()).type != Token::END) {
+        tokens.push_back(token);
+    }
+    tokens.push_back(Token(Token::END, "$"));  // Añadir token de fin
+
+    ParserLL1 parser(tokens);
+    parser.parsear();
+
+    return 0;
 }
+
+
+
 
 
