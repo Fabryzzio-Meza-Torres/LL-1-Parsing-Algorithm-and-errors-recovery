@@ -3,7 +3,8 @@
 #include <vector>
 #include <stack>
 #include <map>  
-#include <iomanip>  
+#include <iomanip> 
+#include <stdexcept>   
 
 using namespace std;
 
@@ -99,7 +100,23 @@ private:
             inputstr += input[i].lexema + " ";
         }
 
-        cout << setw(35)<< stackstr << setw(35) << inputstr << setw(35) << action << "\n";
+        cout << setw(40)<< stackstr << setw(40) << inputstr << setw(40) << action << "\n";
+    }
+
+    void error_recovery(const string& top, Token tokenActual) {
+        cout << "Error: inesperado " << tokenActual.lexema << ", se esperaba " << top << endl;
+        stack.pop();
+        if(top=="$"){
+            throw std::runtime_error("Cadena no aceptada!");
+        }
+        if (tokenActual.type == Token::SEMICOLON || tokenActual.type == Token::END) {
+            if(tokenActual.type == Token::END){
+               throw std::runtime_error("Cadena no aceptada!");
+            }
+            index++; 
+
+
+        }
     }
 
 public:
@@ -161,7 +178,7 @@ void initialize_LL1_Parsing_Table() {
 }
 
     void parse() {
-        cout << setw(35) << "Pila" << setw(35) << "Entrada" << setw(35) << "Acción" << endl;
+        cout << setw(40) << "Pila" << setw(40) << "Entrada" << setw(40) << "Acción" << endl;
 
         while (!stack.empty()) {
             string top = stack.top();
@@ -174,8 +191,7 @@ void initialize_LL1_Parsing_Table() {
                     index++;
                     stack.pop();
                 } else {
-                    cout << "Error de sintaxis: se esperaba " << top << endl;
-                    return;
+                    error_recovery(top, tokenActual);
                 }
             } else {
                 string entradaActual = Token::token_names[tokenActual.type];
@@ -196,8 +212,7 @@ void initialize_LL1_Parsing_Table() {
                         if (*it != "") stack.push(*it);
                     }
                 } else {
-                    cout <<"Cadena Rechazada: no hay produccion para " << tokenActual.lexema << endl;
-                    return;
+                    error_recovery(top, tokenActual);
                 }
             }
         }
@@ -207,7 +222,7 @@ void initialize_LL1_Parsing_Table() {
 };
 
 int main() {
-    string codigo = "x = 4; y = 5; print(x+1)";
+    string codigo = "x=(1+-*5*3();print(x)";
     Scanner scanner(codigo);
     vector<Token> tokens;
     Token tokencito;
