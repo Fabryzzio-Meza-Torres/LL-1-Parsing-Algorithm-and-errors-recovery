@@ -104,19 +104,22 @@ private:
     }
 
     void error_recovery(const string& top, Token tokenActual) {
-        cout << "Error: inesperado " << tokenActual.lexema << ", se esperaba " << top << endl;
-        stack.pop();
         if(top=="$"){
             throw std::runtime_error("Cadena no aceptada!");
         }
-        if (tokenActual.type == Token::SEMICOLON || tokenActual.type == Token::END) {
+        if(isterminal(top)){
+            stack.pop();
+            return;
+        }
+        if (tokenActual.type == Token::SEMICOLON || tokenActual.type == Token::RPAREN ||tokenActual.type == Token::END) {
             if(tokenActual.type == Token::END){
                throw std::runtime_error("Cadena no aceptada!");
             }
-            index++; 
-
-
+            index++; //Explorar
         }
+        cout << "Error: inesperado " << tokenActual.lexema<< ", se esperaba " << top << endl;
+        stack.pop(); //Extraer
+
     }
 
 public:
@@ -222,7 +225,7 @@ void initialize_LL1_Parsing_Table() {
 };
 
 int main() {
-    string codigo = "x=(1+-*5*3();print(x)";
+    string codigo = "x=(1+-*5-*3);print(x)";
     Scanner scanner(codigo);
     vector<Token> tokens;
     Token tokencito;
